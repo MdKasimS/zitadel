@@ -1,0 +1,157 @@
+This guide is to spin Zitadel locally. Also, it is to setup dev setup locally for contributing to Zitadel. It also demonstrates connecting postgres using pgAdmin4(local) &
+pgAdmin4 container.
+
+1. Spinning Up ZITADEL Locally
+
+    Step 1. Create ".env" file by copying it from .env.example or re-naming .env.example to .env & delete .env.example
+
+    Step 2. Execute this command in terminal at path /deploy/compose
+        'docker compose --env-file .env -f docker-compose.yml -f docker-compose.prodlike.yml up -d --wait'
+    
+    Step 3. Check containers health
+        'docker compose ps'
+
+        It should look like this - 
+        postgres                    healthy
+        zitadel-init                healthy
+        zitadel-setup               healthy
+        zitadel-api                 healthy
+
+        If any of this is not healthy or success or failed, execute these command in same terminal you opened.
+        
+        Step 3.1. Delete the volumes created in partially execution.
+            'docker compose down -v'
+            
+            This removes & reset the database
+                a. zitadel_postgres-data
+                b. zitadel_zitadel-bootstrap
+        
+        Step 3.2. Execute this command to setup everything again
+            'docker compose --env-file .env up -d'
+        
+        Step 3.3. Expected output is
+            zitadel-postgres-1       healthy
+            zitadel-zitadel-api-1    healthy
+            zitadel-zitadel-login-1  healthy
+            zitadel-proxy-1          running
+        
+        Step 3.4. End
+
+2. Logging Into ZITADEL Admin Console
+
+    Step 1. Access URL
+        http://localhost:8080
+
+    Step 2. Provide credentials like below 
+        Username - zitadel-admin@zitadel.localhost
+        Password - Password1!
+
+    Step 3. End
+
+3. Connecting pgAdmin4(container)
+
+    Step 1. Check port of zitadel postgres is available for windows or not 
+        'docker compose ps'
+        It should show entry for postgres like this for postgres
+                    NAME                      IMAGE                                   COMMAND                  SERVICE         CREATED        STATUS                  PORTS
+                    zitadel-postgres-1        postgres:17.2-alpine                    "docker-entrypoint.s…"   postgres        23 hours ago   Up 23 hours (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+
+        If you don't see for zitadel-postgres-1 ports like this 0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp the reason is, its not exposed in dev machine.
+        
+        To set this follow -
+
+            Step 1.1 Edit deploy\compose\docker-compose.yml existing postgres section like below  
+                postgres:
+                    image: ${POSTGRES_IMAGE}
+                    restart: unless-stopped
+                    environment:
+                      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+                      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+                      POSTGRES_DB: ${POSTGRES_DB}
+                    healthcheck:
+                      test:
+                        - CMD-SHELL
+                        - pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}
+                      interval: 10s
+                      timeout: 30s
+                      retries: 10
+                      start_period: 20s
+                    volumes:
+                      - postgres-data:/var/lib/postgresql/data:rw
+                    networks:
+                      - zitadel
+                to,
+                postgres:
+                    image: ${POSTGRES_IMAGE}
+                    restart: unless-stopped
+                    ports:
+                      - "5432:5432"
+                    environment:
+                      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+                      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+                      POSTGRES_DB: ${POSTGRES_DB}
+                    healthcheck:
+                      test:
+                        - CMD-SHELL
+                        - pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_ADMIN_USER}
+                      interval: 10s
+                      timeout: 30s
+                      retries: 10
+                      start_period: 20s
+                    volumes:
+                      - postgres-data:/var/lib/postgresql/data:rw
+                    networks:
+                      - zitadel
+
+            Step 1.2. Delete the volumes created since ports were not exposed to windows.
+                'docker compose down -v'
+
+                This removes & reset the database
+                    a. zitadel_postgres-data
+                    b. zitadel_zitadel-bootstrap
+
+            Step 1.3. Execute this command to setup everything again
+                'docker compose --env-file .env up -d'
+
+            Step 1.4. Expected output is
+                zitadel-postgres-1       healthy
+                zitadel-zitadel-api-1    healthy
+                zitadel-zitadel-login-1  healthy
+                zitadel-proxy-1          running
+
+                and for ports
+
+                NAME                      IMAGE                                   COMMAND                  SERVICE         CREATED        STATUS                  PORTS
+                zitadel-postgres-1        postgres:17.2-alpine                    "docker-entrypoint.s…"   postgres        23 hours ago   Up 23 hours (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp
+
+            Step 1.4. End
+
+    Step 3. Pull pgadmin4 image & run the container
+        Pull 'docker pull dpage/pgadmin4'
+            Cross check in docker desktop or using 'docker ps'
+
+        Run 'docker run -d  --name pgadmin  -p 8080:81  -e PGADMIN_DEFAULT_EMAIL=admin@example.com -e PGADMIN_DEFAULT_PASSWORD=admin123 dpage/pgadmin4'
+            Note: You can use your own default email & password.
+
+    Step 4. Visit http://localhost:81/login
+        Enter credentials with which you started pgadmin4 container. Now you are in pgadmin4 panel.
+
+    Step 2. Now find the network name on which Zitadel server is running
+        'docker inspect zitadel-postgres-1 --format="{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}"'    
+
+        This will print network name on console. Copy this name.
+
+    Step 3. Connect pgadmin container to the network we got result for Step 2.
+        'docker network connect zitadel pgadmin'
+
+    Step 4. Now our pgAdmin4 container is connected with zitadel-postgres-1 container which is running on network "zitadel"
+
+    Step 5. Now follow standard procedure for connecting PostgreSql server
+        For our setup use these credentials
+
+        Name: Zitadel Local(You can put as per your wish)    
+        Host: zitadel-postgres-1
+        Port: 5432
+        Maintenance Database: postgres
+        Username: postgres
+        Password: postgres
